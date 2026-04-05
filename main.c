@@ -325,7 +325,7 @@ const char *get_type_related_string(unsigned char letter)
     }
 }
 
-int print_arg_data(unsigned char *argptr)
+int print_arg_data(char **opsptr, char **bptr, unsigned char *argptr)
 {
     int bytes_consumed = 0;
 
@@ -334,7 +334,8 @@ int print_arg_data(unsigned char *argptr)
         case 128:   // load int variable
         {
             int var_index = *argptr & (MAX_VARIABLE - 1);
-            printf(" I%02d", var_index);
+            *bptr   += sprintf(*bptr, "%02x", *argptr);
+            *opsptr += sprintf(*opsptr, " I%02d", var_index);
             bytes_consumed = 1;
             break;
         }
@@ -342,7 +343,8 @@ int print_arg_data(unsigned char *argptr)
         {
             int var_index = argptr[0] & (MAX_VARIABLE - 1);
             int property_number = argptr[1];
-            printf(" [I%02d].%d", var_index, property_number);
+            *bptr   += sprintf(*bptr, "%02x%02x", argptr[0], argptr[1]);
+            *opsptr += sprintf(*opsptr, " [I%02d].%d", var_index, property_number);
             // TODO: write property offsets and types based on property_offset and property_type dynamic data
             bytes_consumed = 2;
             break;
@@ -350,13 +352,15 @@ int print_arg_data(unsigned char *argptr)
         case 192:   // load float variable
         {
             int var_index = *argptr & (MAX_VARIABLE - 1);
-            printf(" F%02d", var_index);
+            *bptr   += sprintf(*bptr, "%02x", *argptr);
+            *opsptr += sprintf(*opsptr, " F%02d", var_index);
             bytes_consumed = 1;
             break;
         }
         default:
         {
-            printf(" ERR");
+            *bptr   += sprintf(*bptr, "%02x", *argptr);
+            *opsptr += sprintf(*opsptr, " ERR");
             bytes_consumed = 1;
         }
     }
@@ -478,6 +482,8 @@ int main(int argc, char *argv[])
     }
 
     // interpret byte code
+    char opstring[256];
+    char bstring[256];
     while (runptr < (run_buffer + run_buffer_used))
     {
         unsigned short listing_offset = runptr - run_buffer;
@@ -491,9 +497,13 @@ int main(int argc, char *argv[])
         }
         printf("%04x:", runptr - run_buffer);
 
+        char *opsptr = opstring;
+        char *bptr = bstring;
+
         if (*runptr < 128)
         {
-            printf("  %s", opcode_names[*runptr]);
+            bptr   += sprintf(bptr, "%02x", *runptr);
+            opsptr += sprintf(opsptr, "%s", opcode_names[*runptr]);
             switch (*runptr)
             {
                 case OPCODE_EQUALS:        // puts top value from int stack into the given variable (1 byte extension)
@@ -503,7 +513,7 @@ int main(int argc, char *argv[])
                 case OPCODE_F_INCREMENT:
                 case OPCODE_F_DECREMENT:
                     ++runptr;
-                    runptr += print_arg_data(runptr);
+                    runptr += print_arg_data(&opsptr, &bptr, runptr);
                     break;
                 case OPCODE_CALLFUNCTION:
                     ++runptr;
@@ -518,21 +528,22 @@ int main(int argc, char *argv[])
                      * 4 byte file start address
                      * zero-terminated function name
                     */
-                    printf(" %08x %08x %08x %08x \"%s\"", read_int_be(runptr), read_int_be(runptr + 4), read_int_be(runptr + 8), read_int_be(runptr + 12), runptr + 16);
+                    bptr   += sprintf(bptr, "..");
+                    opsptr += sprintf(opsptr, " %08x %08x %08x %08x \"%s\"", read_int_be(runptr), read_int_be(runptr + 4), read_int_be(runptr + 8), read_int_be(runptr + 12), runptr + 16);
                     runptr += 16;
                     go_past_null(&runptr);
                     break;
                 case OPCODE_IFFALSEJUMP:     // goes to a new read address if the top integer isn't TRUE
                 case OPCODE_JUMP:
                     ++runptr;
-                    printf(" %04x", read_short_be(runptr));     // address relative to the beginning of the file
+                    bptr   += sprintf(bptr, "%02x%02x", runptr[0], runptr[1]);
+                    opsptr += sprintf(opsptr, " %04x", read_short_be(runptr));     // address relative to the beginning of the file
                     // TODO: resolve addresses to dynamic jump labels and function labels
                     runptr += 2;
                     break;
                 default:
                     ++runptr;
             }
-            printf("\n");
         }
         else
         {
@@ -542,60 +553,68 @@ int main(int argc, char *argv[])
                 case 128: // integer
                 case 160: // property
                 case 192: // float
-                    printf("  PUSH");
-                    runptr += print_arg_data(runptr);
+                    bptr   += sprintf(bptr, "%02x", *runptr);
+                    opsptr += sprintf(opsptr, "PUSH");
+                    runptr += print_arg_data(&opsptr, &bptr, runptr);
                     break;
                 case 224: // extended opcode
-                    printf("  PUSH");
+                    bptr   += sprintf(bptr, "%02x", *runptr);
+                    opsptr += sprintf(opsptr, "PUSH");
                     switch (*runptr & 31)
                     {
                         case 0:
-                            printf(" 0");
+                            opsptr += sprintf(opsptr, " 0");
                             break;
                         case 1:
-                            printf(" 1");
+                            opsptr += sprintf(opsptr, " 1");
                             break;
                         case 2:
-                            printf(" 1.0f");
+                            opsptr += sprintf(opsptr, " 1.0f");
                             break;
                         case 3:
-                            printf(" BYTE %02x", runptr[1]);
+                            bptr   += sprintf(bptr, "%02x", runptr[1]);
+                            opsptr += sprintf(opsptr, " BYTE %02x", runptr[1]);
                             ++runptr;
                             break;
                         case 4:
-                            printf(" SHORT %04x", read_short_be(runptr + 1));
+                            bptr   += sprintf(bptr, "%02x%02x", runptr[1], runptr[2]);
+                            opsptr += sprintf(opsptr, " SHORT %04x", read_short_be(runptr + 1));
                             runptr += 2;
                             break;
                         case 5:
-                            printf(" INT %08x", read_int_be(runptr + 1));
+                            bptr   += sprintf(bptr, "%02x%02x%02x%02x", runptr[1], runptr[2], runptr[3], runptr[4]);
+                            opsptr += sprintf(opsptr, " INT %08x", read_int_be(runptr + 1));
                             runptr += 4;
                             break;
                         case 6:
                             unsigned int fnum = read_int_be(runptr + 1);
-                            printf(" FLOAT %f", *((float *)&fnum));
+                            bptr   += sprintf(bptr, "%02x%02x%02x%02x", runptr[1], runptr[2], runptr[3], runptr[4]);
+                            opsptr += sprintf(opsptr, " FLOAT %f", *((float *)&fnum));
                             runptr += 4;
                             break;
                         case 7:
-                            printf(" STRING (?)");
+                            opsptr += sprintf(opsptr, " STRING (?)");
                             break;
                         case 8:
-                            printf(" FILE PTR %08x", read_int_be(runptr + 1));
+                            bptr   += sprintf(bptr, "%02x%02x%02x%02x", runptr[1], runptr[2], runptr[3], runptr[4]);
+                            opsptr += sprintf(opsptr, " FILE PTR %08x", read_int_be(runptr + 1));
                             runptr += 4;
                             break;
                         case 9:
-                            printf(" FILE DATA REF %08x", read_int_be(runptr + 1));
+                            bptr   += sprintf(bptr, "%02x%02x%02x%02x", runptr[1], runptr[2], runptr[3], runptr[4]);
+                            opsptr += sprintf(opsptr, " FILE DATA REF %08x", read_int_be(runptr + 1));
                             runptr += 4;
                             break;
                         default:
-                            printf(" INVALID");
+                            opsptr += sprintf(opsptr, " INVALID");
                     }
                     ++runptr;
                     break;
                 default:  // invalid
-                    printf("  INVALID OPCODE");
+                    opsptr += sprintf(opsptr, "INVALID OPCODE");
             }
-            printf("\n");
         }
+        printf("  %-10s  %s\n", bstring, opstring);
     }
 
     free(label_descs);
