@@ -47,24 +47,43 @@ make
 ```
 SoulFu Byte Code Analyser
 
-File example.run, loaded 2048 bytes.
+File PSPLASH.RUN, loaded 1449 bytes.
 Fast functions:
-  0100 Spawn()
-  0120 Refresh()
-  0140 Event()
+  0100 Refresh()
+  0249 Event()
+5 function(s):
+  0100 int REFRESH()
+  0249 int EVENT()
+  0297 int SUBSPLASH(float, float, float, int, float, float, int, float, int)
+  0369 int ROWSPLASHEFFECT(float, float, float, float, float)
+  0411 int EFFECT(float, float, float)
+7 string(s):
+  FILE:LITESPLI.RGB
+  FILE:LAVASPLI.RGB
+  FILE:LITESPLI.RGB
+  FILE:LAVASPLI.RGB
+  FILE:BAD1.RAW
+  FILE:LAVASPLI.RGB
+  FILE:LITESPLI.RGB
 
-3 function(s):
-  0200 int Main()
-  0250 float CalculateDamage(int, int, float)
-  0300 void DisplayMessage(string)
-
-2 string(s):
-  "Hello, Adventurer!"
-  "Damage: %d"
-
-0200:
-0200: 01        EQUALS
-0201: c0        PUSH F00
+REFRESH:
+0100:  1a          FINDSELF
+0101:  0080        EQUALS I00
+0103:  a0a07b      PUSH [I00].123
+0105:  1e          TOFLOAT
+0106:  e63dcccccd  PUSH FLOAT 0.100000
+010b:  23          F_MULTIPLY
+010c:  20c1        F_EQUALS F01
+010e:  a0a080      PUSH [I00].128
+0110:  e400f0      PUSH SHORT 00f0
+0113:  07          ISEQUAL
+0114:  430172      IFFALSEJUMP 0172
+0117:  a0a000      PUSH [I00].0
+0119:  a0a001      PUSH [I00].1
+011b:  40..        CALLFUNCTION 00000d49 0000013b 000001d1 00000083 "ROOMWATERLEVEL"
+013b:  e2          PUSH 1.0f
+013c:  21          F_ADD
+013d:  e309        PUSH BYTE 09
 ...
 ```
 
